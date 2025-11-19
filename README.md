@@ -18,11 +18,11 @@ A DIY smart thermostat system using Arduino UNO, Raspberry Pi 4, and Telegram bo
 
 - **Arduino UNO**
 - **Raspberry Pi 4 Model B** (or compatible)
-- **2x Dual Relay Modules** (JQC-3FF-S-Z)
+- **Relay Modules** (I had JQC-3FF-S-Z on hand.)
 - **USB Cable** (USB-A to USB-B for Arduino connection)
 - **5V Power Supply** (for relays, separate from Arduino)
 - **Jumper Wires**
-- **Heating System** (e.g., Viessmann Vitodens 100-W)
+- **Heating System**
 
 ## Software Requirements
 
