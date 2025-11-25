@@ -192,7 +192,6 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
             status_message = f"""
 📊 <b>Thermostat Status (Live)</b>
 
-Last update: 22:02 by Cem
 🔥 State: <b>{last_heartbeat_info['state']}</b>
 ⚙️ Mode: <b>{last_heartbeat_info['mode']}</b>
 🕐 Arduino Time: <b>{last_heartbeat_info['time']}</b>
