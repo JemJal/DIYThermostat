@@ -263,7 +263,7 @@ void updateActiveScheduleCount() {
 
 void activateThermostat() {
   digitalWrite(RELAY1_PIN, LOW);  // Turn on relay 1
-  digitalWrite(RELAY2_PIN, LOW);  // Turn on relay 2
+  // digitalWrite(RELAY2_PIN, LOW);  // Turn on relay 2
 }
 
 void deactivateThermostat() {
