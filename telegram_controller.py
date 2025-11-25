@@ -5,6 +5,7 @@ import serial
 import time
 import json
 import os
+import socket
 from datetime import datetime
 from dotenv import load_dotenv
 from telegram import Update
@@ -361,6 +362,112 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 """
     await update.message.reply_text(help_text, parse_mode='HTML')
 
+def request_summary_service(command):
+    """Request data from summary service"""
+    try:
+        client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        client.settimeout(30)  # Increase timeout to 30 seconds
+        client.connect(('localhost', 9999))
+        client.sendall(command.encode('utf-8'))
+        response = client.recv(8192).decode('utf-8')
+        client.close()
+        return json.loads(response)
+    except socket.timeout:
+        print("Summary service timeout - calculation taking too long")
+        return {'status': 'error', 'message': 'Calculation timeout - logs too large'}
+    except Exception as e:
+        print(f"Error connecting to summary service: {e}")
+        return {'status': 'error', 'message': str(e)}
+
+def format_summary_message(summary_data):
+    """Format summary data into Telegram message"""
+    if summary_data['status'] != 'success':
+        return "⚠️ Error calculating summary"
+    
+    today = summary_data['today']
+    yesterday = summary_data['yesterday']
+    day_before = summary_data['day_before']
+    last_7 = summary_data['last_7_days']
+    
+    message = f"""
+📊 <b>Thermostat Runtime Summary</b>
+
+📅 <b>Today</b> ({today['date']}):
+   ⏱️ {today['runtime_formatted']} ({today['sessions']} sessions)
+
+📅 <b>Yesterday</b> ({yesterday['date']}):
+   ⏱️ {yesterday['runtime_formatted']} ({yesterday['sessions']} sessions)
+
+📅 <b>Day Before</b> ({day_before['date']}):
+   ⏱️ {day_before['runtime_formatted']} ({day_before['sessions']} sessions)
+
+📊 <b>Last 7 Days</b>:
+   ⏱️ {last_7['runtime_formatted']} ({last_7['sessions']} sessions)
+   📈 Average: {last_7['average_per_day']}/day
+
+🕐 Updated: {summary_data['timestamp'][:16]}
+"""
+    return message
+
+async def cmd_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /summary command"""
+    try:
+        if not update.message:
+            return
+        
+        # Request summary from service
+        summary_data = request_summary_service("SUMMARY")
+        
+        # Format and send
+        message = format_summary_message(summary_data)
+        await update.message.reply_text(message, parse_mode='HTML')
+    
+    except Exception as e:
+        if update.message:
+            await update.message.reply_text(f"❌ Error: {e}")
+
+async def send_daily_summary():
+    """Send daily summary at 23:55"""
+    try:
+        # Request summary service to save daily summary (with longer timeout)
+        client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        client.settimeout(60)  # 60 seconds for daily summary
+        client.connect(('localhost', 9999))
+        client.sendall(b'DAILY_SUMMARY')
+        result = client.recv(1024).decode('utf-8')
+        client.close()
+        
+        # Get the summary to send
+        summary_data = request_summary_service("SUMMARY")
+        message = format_summary_message(summary_data)
+        
+        # Send to Telegram
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+        payload = {
+            "chat_id": TELEGRAM_CHAT_ID,
+            "text": message,
+            "parse_mode": "HTML"
+        }
+        requests.post(url, json=payload, timeout=10)
+        print(f"✓ Daily summary sent at 23:55")
+    
+    except socket.timeout:
+        print("✗ Daily summary timeout")
+    except Exception as e:
+        print(f"✗ Error sending daily summary: {e}")
+
+def setup_scheduler():
+    """Setup APScheduler for daily summary at 23:55"""
+    try:
+        scheduler = BackgroundScheduler()
+        scheduler.add_job(send_daily_summary, 'cron', hour=23, minute=55)
+        scheduler.start()
+        print("✓ Daily summary scheduler started (23:55)")
+        return scheduler
+    except Exception as e:
+        print(f"✗ Error setting up scheduler: {e}")
+        return None
+
 if __name__ == "__main__":
     try:
         arduino = serial.Serial(ARDUINO_PORT, BAUD_RATE, timeout=1)
@@ -386,8 +493,16 @@ if __name__ == "__main__":
     application.add_handler(CommandHandler("delete", cmd_delete))
     application.add_handler(CommandHandler("help", cmd_help))
     application.add_handler(CommandHandler("start", cmd_help))
+    application.add_handler(CommandHandler("summary", cmd_summary))
+    
+    scheduler = setup_scheduler()
     
     print("Telegram bot started. Press Ctrl+C to stop.")
-    print("Available commands: /on, /off, /auto, /status, /debug, /schedule, /edit, /add, /delete, /help")
+    print("Available commands: /on, /off, /auto, /status, /debug, /schedule, /edit, /add, /delete, /help, /summary")
     
-    application.run_polling(drop_pending_updates=True)
+    try:
+        application.run_polling(drop_pending_updates=True)
+    finally:
+        if scheduler:
+            scheduler.shutdown()
+
