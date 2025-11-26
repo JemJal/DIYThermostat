@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
-# Telegram Controller - Sends commands to Arduino via serial
+# Telegram Controller - Sends commands to smart_thermostat via socket
 
-import serial
 import time
 import json
 import os
@@ -17,13 +16,9 @@ load_dotenv(os.path.expanduser('~/.env'))
 # Configuration from .env
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
-ARDUINO_PORT = os.getenv('ARDUINO_PORT')
-BAUD_RATE = int(os.getenv('BAUD_RATE', 9600))
 schedule_file = os.getenv('SCHEDULE_FILE')
 log_file = os.getenv('LOG_FILE')
-
-# Global serial connection
-arduino = None
+COMMAND_PORT = 5000  # Socket port to communicate with smart_thermostat.py
 
 # Global schedule storage
 current_schedule = []
@@ -32,6 +27,27 @@ current_schedule = []
 last_known_state = "OFF"
 last_known_mode = "AUTO"
 last_state_change = datetime.now()
+
+def send_command(command):
+    """Send command to smart_thermostat.py via socket"""
+    try:
+        client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        client.settimeout(5)
+        client.connect(('localhost', COMMAND_PORT))
+        client.sendall(command.encode('utf-8'))
+        response = client.recv(4096).decode('utf-8')
+        client.close()
+
+        result = json.loads(response)
+        if result.get('status') == 'success':
+            print(f"✓ Command sent: {command}")
+            return True
+        else:
+            print(f"✗ Command failed: {result.get('message')}")
+            return False
+    except Exception as e:
+        print(f"✗ Error sending command: {e}")
+        return False
 
 def load_schedule():
     """Load schedule from JSON file"""
@@ -57,100 +73,59 @@ def save_schedule():
         print(f"Error saving schedule: {e}")
 
 def send_schedule_to_arduino():
-    """Send all schedules to Arduino"""
+    """Send all schedules to Arduino via smart_thermostat"""
     try:
-        arduino.write(b"CLEAR_SCHED\n")
+        # Clear existing schedules
+        if not send_command("CLEAR_SCHED"):
+            print("Warning: Failed to clear schedules")
+            return False
+
         time.sleep(0.2)
-        
+
+        # Send each schedule
         for i, sched in enumerate(current_schedule):
-            message = f"SCHED:{i}:{sched['startHour']}:{sched['startMinute']}:{sched['endHour']}:{sched['endMinute']}\n"
-            arduino.write(message.encode())
+            message = f"SCHED:{i}:{sched['startHour']}:{sched['startMinute']}:{sched['endHour']}:{sched['endMinute']}"
+            if not send_command(message):
+                print(f"Warning: Failed to send schedule {i}")
             time.sleep(0.2)
+
+        print(f"✓ Sent {len(current_schedule)} schedules to Arduino")
+        return True
     except Exception as e:
         print(f"Error sending schedule: {e}")
-
-def reconnect_arduino():
-    """Try to reconnect to Arduino"""
-    global arduino
-    try:
-        if arduino:
-            arduino.close()
-    except:
-        pass
-    
-    try:
-        arduino = serial.Serial(ARDUINO_PORT, BAUD_RATE, timeout=1)
-        print("Reconnected to Arduino")
-        time.sleep(1)
-        send_schedule_to_arduino()
-        return True
-    except:
-        print("Failed to reconnect")
         return False
 
 async def cmd_on(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /on command"""
     global last_known_state, last_known_mode, last_state_change
-    try:
-        arduino.write(b"OVERRIDE:ON\n")
+    if send_command("OVERRIDE:ON"):
         last_known_state = "ON"
         last_known_mode = "MANUAL_ON"
         last_state_change = datetime.now()
         await update.message.reply_text("🔥 Thermostat turned ON manually")
-    except Exception as e:
-        if reconnect_arduino():
-            try:
-                arduino.write(b"OVERRIDE:ON\n")
-                last_known_state = "ON"
-                last_known_mode = "MANUAL_ON"
-                last_state_change = datetime.now()
-                await update.message.reply_text("🔥 Thermostat turned ON manually (reconnected)")
-            except:
-                await update.message.reply_text(f"❌ Error: Arduino disconnected")
-        else:
-            await update.message.reply_text(f"❌ Error: Cannot connect to Arduino")
+    else:
+        await update.message.reply_text("❌ Error: Failed to send command to thermostat")
 
 async def cmd_off(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /off command"""
     global last_known_state, last_known_mode, last_state_change
-    try:
-        arduino.write(b"OVERRIDE:OFF\n")
+    if send_command("OVERRIDE:OFF"):
         last_known_state = "OFF"
         last_known_mode = "MANUAL_OFF"
         last_state_change = datetime.now()
         await update.message.reply_text("❄️ Thermostat turned OFF manually")
-    except Exception as e:
-        if reconnect_arduino():
-            try:
-                arduino.write(b"OVERRIDE:OFF\n")
-                last_known_state = "OFF"
-                last_known_mode = "MANUAL_OFF"
-                last_state_change = datetime.now()
-                await update.message.reply_text("❄️ Thermostat turned OFF manually (reconnected)")
-            except:
-                await update.message.reply_text(f"❌ Error: Arduino disconnected")
-        else:
-            await update.message.reply_text(f"❌ Error: Cannot connect to Arduino")
+    else:
+        await update.message.reply_text("❌ Error: Failed to send command to thermostat")
 
 async def cmd_auto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /auto command"""
     global last_known_mode, last_state_change
-    try:
-        arduino.write(b"OVERRIDE:AUTO\n")
+    if send_command("OVERRIDE:AUTO"):
         last_known_mode = "AUTO"
         last_state_change = datetime.now()
         await update.message.reply_text("🔄 Thermostat set to AUTO mode (following schedule)")
-    except Exception as e:
-        if reconnect_arduino():
-            try:
-                arduino.write(b"OVERRIDE:AUTO\n")
-                last_known_mode = "AUTO"
-                last_state_change = datetime.now()
-                await update.message.reply_text("🔄 Thermostat set to AUTO mode (reconnected)")
-            except:
-                await update.message.reply_text(f"❌ Error: Arduino disconnected")
-        else:
-            await update.message.reply_text(f"❌ Error: Cannot connect to Arduino")
+    else:
+        await update.message.reply_text("❌ Error: Failed to send command to thermostat")
 
 async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /status command - get actual status from log file"""
@@ -469,19 +444,27 @@ def setup_scheduler():
         return None
 
 if __name__ == "__main__":
-    try:
-        arduino = serial.Serial(ARDUINO_PORT, BAUD_RATE, timeout=1)
-        print(f"Connected to Arduino on {ARDUINO_PORT}")
-        
-        load_schedule()
-        time.sleep(1)
-        send_schedule_to_arduino()
-    except Exception as e:
-        print(f"Failed to connect to Arduino: {e}")
-        exit(1)
-    
+    print("=" * 50)
+    print("Telegram Controller Started")
+    print("=" * 50)
+
+    # Load schedules from file
+    load_schedule()
+
+    # Wait a moment for smart_thermostat.py to be ready
+    print("Waiting for smart_thermostat.py to be ready...")
+    time.sleep(2)
+
+    # Send schedules to Arduino via smart_thermostat
+    print("Sending schedules to Arduino...")
+    if send_schedule_to_arduino():
+        print("✓ Schedules sent successfully")
+    else:
+        print("⚠ Warning: Failed to send schedules (smart_thermostat.py may not be running)")
+
+    # Start Telegram bot
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
-    
+
     application.add_handler(CommandHandler("on", cmd_on))
     application.add_handler(CommandHandler("off", cmd_off))
     application.add_handler(CommandHandler("auto", cmd_auto))
@@ -494,12 +477,12 @@ if __name__ == "__main__":
     application.add_handler(CommandHandler("help", cmd_help))
     application.add_handler(CommandHandler("start", cmd_help))
     application.add_handler(CommandHandler("summary", cmd_summary))
-    
+
     scheduler = setup_scheduler()
-    
-    print("Telegram bot started. Press Ctrl+C to stop.")
+
+    print("✓ Telegram bot started")
     print("Available commands: /on, /off, /auto, /status, /debug, /schedule, /edit, /add, /delete, /help, /summary")
-    
+
     try:
         application.run_polling(drop_pending_updates=True)
     finally:

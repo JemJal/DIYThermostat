@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 # Smart Thermostat - Arduino Manager
 # Handles time sync, schedule management, and Arduino communication
-# Telegram notifications are handled by telegram_controller.py
+# Receives commands from telegram_controller.py via socket
 
 import serial
 import time
 import os
+import socket
+import threading
+import json
 from datetime import datetime
 from zoneinfo import ZoneInfo
 import logging
@@ -21,6 +24,7 @@ BAUD_RATE = int(os.getenv('BAUD_RATE', 9600))
 HEARTBEAT_TIMEOUT = int(os.getenv('HEARTBEAT_TIMEOUT', 90))
 LOG_FILE = os.getenv('LOG_FILE')
 TIMEZONE = os.getenv('TIMEZONE', 'Europe/Istanbul')
+COMMAND_PORT = 5000  # Socket port for receiving commands from telegram_controller
 
 # ==================== LOGGING SETUP ====================
 logging.basicConfig(
@@ -57,19 +61,124 @@ def sync_time_to_arduino(ser):
     except Exception as e:
         logger.error(f"✗ Failed to sync time: {e}")
 
+def send_arduino_command(command):
+    """Send command to Arduino and return success status"""
+    global arduino_serial
+    try:
+        if arduino_serial and arduino_serial.is_open:
+            arduino_serial.write(f"{command}\n".encode())
+            logger.info(f"→ Sent to Arduino: {command}")
+            return True
+        else:
+            logger.error("✗ Cannot send command: Arduino not connected")
+            return False
+    except Exception as e:
+        logger.error(f"✗ Error sending command to Arduino: {e}")
+        return False
+
+def handle_command_connection(client_socket, address):
+    """Handle incoming command from telegram_controller"""
+    try:
+        client_socket.settimeout(5)
+        data = client_socket.recv(4096).decode('utf-8').strip()
+
+        if not data:
+            return
+
+        logger.info(f"← Received command: {data}")
+
+        response = {"status": "error", "message": "Unknown command"}
+
+        # Handle different command types
+        if data.startswith("OVERRIDE:"):
+            # Commands: OVERRIDE:ON, OVERRIDE:OFF, OVERRIDE:AUTO
+            if send_arduino_command(data):
+                response = {"status": "success", "message": f"Command sent: {data}"}
+            else:
+                response = {"status": "error", "message": "Failed to send to Arduino"}
+
+        elif data.startswith("CLEAR_SCHED"):
+            if send_arduino_command("CLEAR_SCHED"):
+                response = {"status": "success", "message": "Schedules cleared"}
+            else:
+                response = {"status": "error", "message": "Failed to clear schedules"}
+
+        elif data.startswith("SCHED:"):
+            # Format: SCHED:index:startHour:startMinute:endHour:endMinute
+            if send_arduino_command(data):
+                response = {"status": "success", "message": f"Schedule sent: {data}"}
+            else:
+                response = {"status": "error", "message": "Failed to send schedule"}
+
+        elif data == "GET_STATUS":
+            response = {
+                "status": "success",
+                "thermostat_status": thermostat_status,
+                "thermostat_mode": thermostat_mode,
+                "last_heartbeat": last_heartbeat
+            }
+
+        else:
+            response = {"status": "error", "message": f"Unknown command: {data}"}
+
+        # Send response
+        client_socket.sendall(json.dumps(response).encode('utf-8'))
+
+    except socket.timeout:
+        logger.warning("Command connection timeout")
+    except Exception as e:
+        logger.error(f"✗ Error handling command: {e}")
+        try:
+            error_response = json.dumps({"status": "error", "message": str(e)})
+            client_socket.sendall(error_response.encode('utf-8'))
+        except:
+            pass
+    finally:
+        try:
+            client_socket.close()
+        except:
+            pass
+
+def command_server():
+    """Socket server to receive commands from telegram_controller"""
+    try:
+        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server_socket.bind(('localhost', COMMAND_PORT))
+        server_socket.listen(5)
+
+        logger.info(f"✓ Command server listening on port {COMMAND_PORT}")
+
+        while True:
+            try:
+                client_socket, address = server_socket.accept()
+                # Handle each command in a separate thread
+                cmd_thread = threading.Thread(
+                    target=handle_command_connection,
+                    args=(client_socket, address),
+                    daemon=True
+                )
+                cmd_thread.start()
+            except Exception as e:
+                logger.error(f"✗ Error accepting command connection: {e}")
+                continue
+
+    except Exception as e:
+        logger.error(f"✗ Error starting command server: {e}")
+
 def heartbeat_monitor():
     """Monitor for missed heartbeats"""
     global last_heartbeat, alert_sent
-    
+
     while True:
         time.sleep(10)
-        
+
         time_since_heartbeat = time.time() - last_heartbeat
-        
+
         if time_since_heartbeat > HEARTBEAT_TIMEOUT and not alert_sent:
             alert_sent = True
             logger.warning(f"⚠ ALERT: Thermostat offline - No heartbeat for {int(time_since_heartbeat)}s")
-        
+
         elif time_since_heartbeat < HEARTBEAT_TIMEOUT and alert_sent:
             alert_sent = False
             logger.info("✓ Thermostat reconnected")
@@ -169,14 +278,18 @@ def read_arduino():
 # ==================== MAIN ====================
 if __name__ == "__main__":
     import threading
-    
+
     logger.info("=" * 50)
     logger.info("Smart Thermostat Manager Started")
     logger.info("=" * 50)
-    
+
+    # Start command server in background
+    command_thread = threading.Thread(target=command_server, daemon=True)
+    command_thread.start()
+
     # Start heartbeat monitor in background
     monitor_thread = threading.Thread(target=heartbeat_monitor, daemon=True)
     monitor_thread.start()
-    
+
     # Start reading from Arduino (main loop)
     read_arduino()
