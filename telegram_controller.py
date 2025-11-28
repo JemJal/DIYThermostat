@@ -521,7 +521,7 @@ async def cmd_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if update.message:
             await update.message.reply_text(f"❌ Error: {e}")
 
-async def send_daily_summary():
+def send_daily_summary():
     """Send daily summary at 23:55"""
     try:
         # Request summary service to save daily summary (with longer timeout)
@@ -564,52 +564,78 @@ def setup_scheduler():
         return None
 
 if __name__ == "__main__":
-    print("=" * 60)
-    print(f"Telegram Controller v{__version__}")
-    print("=" * 60)
-
-    # Start notification server in background thread
-    notification_thread = threading.Thread(target=notification_server, daemon=True)
-    notification_thread.start()
-
-    # Load schedules from file
-    load_schedule()
-
-    # Wait a moment for smart_thermostat.py to be ready
-    print("Waiting for smart_thermostat.py to be ready...")
-    time.sleep(2)
-
-    # Send schedules to Arduino via smart_thermostat
-    print("Sending schedules to Arduino...")
-    if send_schedule_to_arduino():
-        print("✓ Schedules sent successfully")
-    else:
-        print("⚠ Warning: Failed to send schedules (smart_thermostat.py may not be running)")
-
-    # Start Telegram bot
-    application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
-
-    application.add_handler(CommandHandler("on", cmd_on))
-    application.add_handler(CommandHandler("off", cmd_off))
-    application.add_handler(CommandHandler("auto", cmd_auto))
-    application.add_handler(CommandHandler("status", cmd_status))
-    application.add_handler(CommandHandler("debug", cmd_debug))
-    application.add_handler(CommandHandler("schedule", cmd_schedule))
-    application.add_handler(CommandHandler("edit", cmd_edit))
-    application.add_handler(CommandHandler("add", cmd_add))
-    application.add_handler(CommandHandler("delete", cmd_delete))
-    application.add_handler(CommandHandler("help", cmd_help))
-    application.add_handler(CommandHandler("start", cmd_help))
-    application.add_handler(CommandHandler("summary", cmd_summary))
-
-    scheduler = setup_scheduler()
-
-    print("✓ Telegram bot started")
-    print("Available commands: /on, /off, /auto, /status, /debug, /schedule, /edit, /add, /delete, /help, /summary")
-
     try:
+        print("=" * 60)
+        print(f"Telegram Controller v{__version__}")
+        print("=" * 60)
+
+        # Start notification server in background thread
+        print("[1/6] Starting notification server...")
+        notification_thread = threading.Thread(target=notification_server, daemon=True)
+        notification_thread.start()
+        time.sleep(0.5)  # Give it time to start
+        print("✓ Notification server started")
+
+        # Load schedules from file
+        print("[2/6] Loading schedules...")
+        load_schedule()
+        print(f"✓ Loaded {len(current_schedule)} schedules")
+
+        # Wait a moment for smart_thermostat.py to be ready
+        print("[3/6] Waiting for smart_thermostat.py...")
+        time.sleep(2)
+
+        # Send schedules to Arduino via smart_thermostat
+        print("[4/6] Sending schedules to Arduino...")
+        if send_schedule_to_arduino():
+            print("✓ Schedules sent successfully")
+        else:
+            print("⚠ Warning: Failed to send schedules (smart_thermostat.py may not be running)")
+
+        # Start Telegram bot
+        print("[5/6] Building Telegram application...")
+        application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+
+        application.add_handler(CommandHandler("on", cmd_on))
+        application.add_handler(CommandHandler("off", cmd_off))
+        application.add_handler(CommandHandler("auto", cmd_auto))
+        application.add_handler(CommandHandler("status", cmd_status))
+        application.add_handler(CommandHandler("debug", cmd_debug))
+        application.add_handler(CommandHandler("schedule", cmd_schedule))
+        application.add_handler(CommandHandler("edit", cmd_edit))
+        application.add_handler(CommandHandler("add", cmd_add))
+        application.add_handler(CommandHandler("delete", cmd_delete))
+        application.add_handler(CommandHandler("help", cmd_help))
+        application.add_handler(CommandHandler("start", cmd_help))
+        application.add_handler(CommandHandler("summary", cmd_summary))
+        print("✓ Telegram application built")
+
+        print("[6/6] Setting up scheduler...")
+        scheduler = setup_scheduler()
+        print("✓ Scheduler ready")
+
+        print()
+        print("=" * 60)
+        print("✅ TELEGRAM CONTROLLER READY")
+        print("=" * 60)
+        print("Available commands: /on, /off, /auto, /status, /debug, /schedule, /edit, /add, /delete, /help, /summary")
+        print()
+        print("Starting bot polling... (service will run continuously)")
+        print()
+
         application.run_polling(drop_pending_updates=True)
-    finally:
-        if scheduler:
+
+    except KeyboardInterrupt:
+        print("\n⚠ Shutting down gracefully...")
+        if 'scheduler' in locals() and scheduler:
             scheduler.shutdown()
+        print("✓ Shutdown complete")
+    except Exception as e:
+        print(f"\n❌ FATAL ERROR: {e}")
+        print(f"Error type: {type(e).__name__}")
+        import traceback
+        traceback.print_exc()
+        if 'scheduler' in locals() and scheduler:
+            scheduler.shutdown()
+        sys.exit(1)
 

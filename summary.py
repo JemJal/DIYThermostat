@@ -25,7 +25,6 @@ from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
 import logging
 import sys
-import socket
 import json
 from apscheduler.schedulers.background import BackgroundScheduler
 
