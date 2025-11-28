@@ -1,10 +1,41 @@
-// Arduino UNO - Smart Thermostat Controller with Manual Override & Dynamic Schedules
-// FIXED: Proper timezone handling for Turkey (UTC+3)
-// Accepts time sync: TIME:1234567890 (Unix timestamp)
-// Accepts overrides: OVERRIDE:ON, OVERRIDE:OFF, OVERRIDE:AUTO
-// Accepts schedule updates: SCHED:index:startHour:startMinute:endHour:endMinute
+/*
+ * Smart Thermostat - Arduino Controller
+ * ======================================
+ *
+ * Controls heating system relays based on schedules and manual overrides.
+ * Receives commands and time sync from Raspberry Pi via serial.
+ * Supports up to 5 concurrent schedules with dynamic updates.
+ *
+ * Author: Cem
+ * Version: 1.0.0
+ * License: MIT
+ * Repository: https://github.com/yourusername/DIYThermostat
+ *
+ * Hardware:
+ *   - Arduino UNO
+ *   - 2x Relay Modules (pins 5 and 6)
+ *   - Serial connection to Raspberry Pi
+ *
+ * Protocol:
+ *   Receives:
+ *     - TIME:<unix_timestamp>     - Set Arduino time (UTC)
+ *     - OVERRIDE:ON/OFF/AUTO      - Manual control or return to schedule
+ *     - SCHED:<idx>:<sh>:<sm>:<eh>:<em> - Update schedule
+ *     - CLEAR_SCHED               - Clear all schedules
+ *
+ *   Sends:
+ *     - HEARTBEAT:<HH>:<MM>:<status>:<mode> - Every 30 seconds
+ *     - STATUS:STARTED/STOPPED    - When state changes (AUTO mode)
+ *     - STATUS:STARTED_MANUAL/STOPPED_MANUAL - Manual mode changes
+ *     - MODE:<mode>               - When mode changes
+ *
+ * Timezone: UTC+3 (Turkey) - handled by offset in time conversion
+ */
 
 #include <TimeLib.h>
+
+// Version
+#define VERSION "1.0.0"
 
 // Relay pins
 const int RELAY1_PIN = 5;

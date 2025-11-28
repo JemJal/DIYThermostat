@@ -1,0 +1,21 @@
+# DIY Thermostat - Python Dependencies
+# Version: 1.0.0
+
+# Serial Communication
+pyserial==3.5
+
+# Telegram Bot
+python-telegram-bot==20.7
+
+# Environment Variables
+python-dotenv==1.0.0
+
+# HTTP Requests
+requests==2.31.0
+
+# Task Scheduling
+APScheduler==3.10.4
+
+# Note: zoneinfo is built-in for Python 3.9+
+# If using Python 3.8 or earlier, uncomment:
+# backports.zoneinfo==0.2.1

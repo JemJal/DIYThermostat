@@ -1,7 +1,28 @@
 #!/usr/bin/env python3
-# Smart Thermostat - Arduino Manager
-# Handles time sync, schedule management, and Arduino communication
-# Receives commands from telegram_controller.py via socket
+"""
+Smart Thermostat - Arduino Manager
+===================================
+
+Manages Arduino communication, time synchronization, and command execution.
+Receives commands from telegram_controller via socket (port 5000).
+Sends notification requests to telegram_controller via socket (port 5001).
+
+Author: Cem
+Version: 1.0.0
+License: MIT
+Repository: https://github.com/yourusername/DIYThermostat
+
+Architecture:
+    - Only process that communicates with Arduino via serial port
+    - Runs command server on port 5000 (receives commands)
+    - Sends notification requests to port 5001
+    - Monitors Arduino heartbeat and system health
+    - Synchronizes time with Arduino every hour
+
+Communication Flow:
+    Telegram Bot → telegram_controller → [Socket 5000] → smart_thermostat → Arduino
+    Arduino → smart_thermostat → [Socket 5001] → telegram_controller → Telegram
+"""
 
 import serial
 import time
@@ -15,6 +36,9 @@ import logging
 import sys
 from dotenv import load_dotenv
 
+# Version
+__version__ = "1.0.0"
+
 # Load environment variables
 load_dotenv(os.path.expanduser('~/.env'))
 
@@ -26,6 +50,12 @@ LOG_FILE = os.getenv('LOG_FILE')
 TIMEZONE = os.getenv('TIMEZONE', 'Europe/Istanbul')
 COMMAND_PORT = 5000  # Socket port for receiving commands from telegram_controller
 NOTIFICATION_PORT = 5001  # Socket port for sending notifications to telegram_controller
+
+# Validate critical configuration
+if not all([ARDUINO_PORT, LOG_FILE]):
+    print("ERROR: Missing required configuration in .env file")
+    print("Required: ARDUINO_PORT, LOG_FILE")
+    sys.exit(1)
 
 # ==================== LOGGING SETUP ====================
 logging.basicConfig(
@@ -319,9 +349,13 @@ def read_arduino():
 if __name__ == "__main__":
     import threading
 
-    logger.info("=" * 50)
-    logger.info("Smart Thermostat Manager Started")
-    logger.info("=" * 50)
+    logger.info("=" * 60)
+    logger.info(f"Smart Thermostat Manager v{__version__}")
+    logger.info("=" * 60)
+    logger.info(f"Arduino Port: {ARDUINO_PORT}")
+    logger.info(f"Command Port: {COMMAND_PORT}")
+    logger.info(f"Notification Port: {NOTIFICATION_PORT}")
+    logger.info(f"Timezone: {TIMEZONE}")
 
     # Start command server in background
     command_thread = threading.Thread(target=command_server, daemon=True)

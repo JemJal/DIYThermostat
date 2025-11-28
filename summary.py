@@ -1,7 +1,19 @@
 #!/usr/bin/env python3
-# Smart Thermostat Summary Service
-# Parses logs, calculates runtime statistics, and manages summary data
-# Runs as a daemon service
+"""
+Smart Thermostat - Summary Service
+===================================
+
+Parses log files and calculates thermostat runtime statistics.
+Provides socket interface for requesting summaries and historical data.
+
+Author: Cem
+Version: 1.0.0
+License: MIT
+Repository: https://github.com/yourusername/DIYThermostat
+"""
+
+# Version
+__version__ = "1.0.0"
 
 import os
 import json
@@ -482,9 +494,9 @@ def request_historical():
 if __name__ == "__main__":
     import sys
     
-    logger.info("=" * 50)
-    logger.info("Smart Thermostat Summary Service Started")
-    logger.info("=" * 50)
+    logger.info("=" * 60)
+    logger.info(f"Smart Thermostat Summary Service v{__version__}")
+    logger.info("=" * 60)
     
     # Start server
     start_server()

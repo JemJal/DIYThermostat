@@ -1,9 +1,20 @@
 #!/bin/bash
+#
+# Smart Thermostat - Update Script
+# =================================
+#
+# Updates thermostat software from Git repository and restarts services.
+# Uses systemd service management for reliable operation.
+#
+# Author: Cem
+# Version: 1.0.0
+# License: MIT
+#
 
-# Update script for thermostat (using systemd services)
+VERSION="1.0.0"
 
 echo "=================================================="
-echo "Thermostat Update Script"
+echo "Thermostat Update Script v${VERSION}"
 echo "=================================================="
 
 # Pull latest code from git

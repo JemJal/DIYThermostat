@@ -1,0 +1,18 @@
+{
+  "schedules": [
+    {
+      "name": "Morning Warmup",
+      "startHour": 6,
+      "startMinute": 0,
+      "endHour": 8,
+      "endMinute": 30
+    },
+    {
+      "name": "Evening Heating",
+      "startHour": 17,
+      "startMinute": 0,
+      "endHour": 22,
+      "endMinute": 0
+    }
+  ]
+}

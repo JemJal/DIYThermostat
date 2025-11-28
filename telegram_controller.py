@@ -1,5 +1,27 @@
 #!/usr/bin/env python3
-# Telegram Controller - Sends commands to smart_thermostat via socket
+"""
+Smart Thermostat - Telegram Controller
+=======================================
+
+Handles Telegram bot interface and user commands.
+Communicates with smart_thermostat via sockets for Arduino control.
+Receives notification requests from smart_thermostat and sends Telegram messages.
+
+Author: Cem
+Version: 1.0.0
+License: MIT
+Repository: https://github.com/yourusername/DIYThermostat
+
+Architecture:
+    - Telegram bot interface for user commands
+    - Socket client to port 5000 (sends commands to smart_thermostat)
+    - Socket server on port 5001 (receives notification requests)
+    - Manages heating schedules (schedule.json)
+    - Provides status, statistics, and control commands
+"""
+
+# Version
+__version__ = "1.0.0"
 
 import time
 import json
@@ -22,6 +44,13 @@ schedule_file = os.getenv('SCHEDULE_FILE')
 log_file = os.getenv('LOG_FILE')
 COMMAND_PORT = 5000  # Socket port to send commands to smart_thermostat.py
 NOTIFICATION_PORT = 5001  # Socket port to receive notification requests from smart_thermostat.py
+
+# Validate critical configuration
+if not all([TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, schedule_file, log_file]):
+    print("ERROR: Missing required configuration in .env file")
+    print("Required: TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, SCHEDULE_FILE, LOG_FILE")
+    import sys
+    sys.exit(1)
 
 # Global schedule storage
 current_schedule = []
@@ -534,9 +563,9 @@ def setup_scheduler():
         return None
 
 if __name__ == "__main__":
-    print("=" * 50)
-    print("Telegram Controller Started")
-    print("=" * 50)
+    print("=" * 60)
+    print(f"Telegram Controller v{__version__}")
+    print("=" * 60)
 
     # Start notification server in background thread
     notification_thread = threading.Thread(target=notification_server, daemon=True)
