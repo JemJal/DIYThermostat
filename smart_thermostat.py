@@ -25,6 +25,7 @@ HEARTBEAT_TIMEOUT = int(os.getenv('HEARTBEAT_TIMEOUT', 90))
 LOG_FILE = os.getenv('LOG_FILE')
 TIMEZONE = os.getenv('TIMEZONE', 'Europe/Istanbul')
 COMMAND_PORT = 5000  # Socket port for receiving commands from telegram_controller
+NOTIFICATION_PORT = 5001  # Socket port for sending notifications to telegram_controller
 
 # ==================== LOGGING SETUP ====================
 logging.basicConfig(
@@ -60,6 +61,37 @@ def sync_time_to_arduino(ser):
         logger.info(f"✓ Time synced to Arduino: {unix_time} (Local: {current_dt.strftime('%H:%M:%S')})")
     except Exception as e:
         logger.error(f"✗ Failed to sync time: {e}")
+
+def request_notification(message):
+    """Request telegram_controller to send a notification"""
+    try:
+        client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        client.settimeout(2)
+        client.connect(('localhost', NOTIFICATION_PORT))
+
+        notification_data = {
+            "type": "notification",
+            "message": message
+        }
+
+        client.sendall(json.dumps(notification_data).encode('utf-8'))
+        response = client.recv(1024).decode('utf-8')
+        client.close()
+
+        result = json.loads(response)
+        if result.get('status') == 'success':
+            logger.info(f"✓ Notification request sent: {message[:50]}...")
+            return True
+        else:
+            logger.debug(f"⚠ Notification request failed: {result.get('message', 'Unknown error')}")
+            return False
+
+    except ConnectionRefusedError:
+        logger.debug("⚠ Notification service not available (telegram_controller may not be running)")
+        return False
+    except Exception as e:
+        logger.debug(f"⚠ Error requesting notification: {e}")
+        return False
 
 def send_arduino_command(command):
     """Send command to Arduino and return success status"""
@@ -220,18 +252,26 @@ def read_arduino():
                         elif line == "STATUS:STARTED":
                             last_heartbeat = time.time()
                             thermostat_status = "ON"
-                        
+                            # Request notification for AUTO mode start
+                            current_time = datetime.now(ZoneInfo(TIMEZONE)).strftime('%H:%M')
+                            request_notification(f"🔥 <b>Boiler Started</b>\n\n⏰ Time: {current_time}\n🔄 Mode: AUTO")
+
                         elif line == "STATUS:STOPPED":
                             last_heartbeat = time.time()
                             thermostat_status = "OFF"
-                        
+                            # Request notification for AUTO mode stop
+                            current_time = datetime.now(ZoneInfo(TIMEZONE)).strftime('%H:%M')
+                            request_notification(f"❄️ <b>Boiler Stopped</b>\n\n⏰ Time: {current_time}\n🔄 Mode: AUTO")
+
                         elif line == "STATUS:STARTED_MANUAL":
                             last_heartbeat = time.time()
                             thermostat_status = "ON"
-                        
+                            # No notification for manual mode (user already knows)
+
                         elif line == "STATUS:STOPPED_MANUAL":
                             last_heartbeat = time.time()
                             thermostat_status = "OFF"
+                            # No notification for manual mode (user already knows)
                         
                         elif line.startswith("MODE:"):
                             mode = line.replace("MODE:", "")

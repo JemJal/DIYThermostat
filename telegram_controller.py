@@ -5,6 +5,8 @@ import time
 import json
 import os
 import socket
+import threading
+import requests
 from datetime import datetime
 from dotenv import load_dotenv
 from telegram import Update
@@ -18,7 +20,8 @@ TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 schedule_file = os.getenv('SCHEDULE_FILE')
 log_file = os.getenv('LOG_FILE')
-COMMAND_PORT = 5000  # Socket port to communicate with smart_thermostat.py
+COMMAND_PORT = 5000  # Socket port to send commands to smart_thermostat.py
+NOTIFICATION_PORT = 5001  # Socket port to receive notification requests from smart_thermostat.py
 
 # Global schedule storage
 current_schedule = []
@@ -48,6 +51,93 @@ def send_command(command):
     except Exception as e:
         print(f"✗ Error sending command: {e}")
         return False
+
+def send_telegram_message(message):
+    """Send a Telegram message"""
+    try:
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+        payload = {
+            "chat_id": TELEGRAM_CHAT_ID,
+            "text": message,
+            "parse_mode": "HTML"
+        }
+
+        response = requests.post(url, json=payload, timeout=10)
+
+        if response.status_code == 200:
+            print(f"✓ Telegram message sent: {message[:50]}...")
+            return True
+        else:
+            print(f"✗ Telegram message failed: {response.status_code}")
+            return False
+
+    except Exception as e:
+        print(f"✗ Error sending Telegram message: {e}")
+        return False
+
+def handle_notification_request(client_socket, address):
+    """Handle incoming notification request from smart_thermostat"""
+    try:
+        client_socket.settimeout(5)
+        data = client_socket.recv(4096).decode('utf-8').strip()
+
+        if not data:
+            return
+
+        request = json.loads(data)
+
+        if request.get('type') == 'notification':
+            message = request.get('message', '')
+            # Send the Telegram notification
+            if send_telegram_message(message):
+                response = {"status": "success", "message": "Notification sent"}
+            else:
+                response = {"status": "error", "message": "Failed to send notification"}
+        else:
+            response = {"status": "error", "message": "Unknown request type"}
+
+        # Send response
+        client_socket.sendall(json.dumps(response).encode('utf-8'))
+
+    except Exception as e:
+        print(f"✗ Error handling notification request: {e}")
+        try:
+            error_response = json.dumps({"status": "error", "message": str(e)})
+            client_socket.sendall(error_response.encode('utf-8'))
+        except:
+            pass
+    finally:
+        try:
+            client_socket.close()
+        except:
+            pass
+
+def notification_server():
+    """Socket server to receive notification requests from smart_thermostat"""
+    try:
+        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server_socket.bind(('localhost', NOTIFICATION_PORT))
+        server_socket.listen(5)
+
+        print(f"✓ Notification server listening on port {NOTIFICATION_PORT}")
+
+        while True:
+            try:
+                client_socket, address = server_socket.accept()
+                # Handle each notification request in a separate thread
+                notif_thread = threading.Thread(
+                    target=handle_notification_request,
+                    args=(client_socket, address),
+                    daemon=True
+                )
+                notif_thread.start()
+            except Exception as e:
+                print(f"✗ Error accepting notification connection: {e}")
+                continue
+
+    except Exception as e:
+        print(f"✗ Error starting notification server: {e}")
 
 def load_schedule():
     """Load schedule from JSON file"""
@@ -447,6 +537,10 @@ if __name__ == "__main__":
     print("=" * 50)
     print("Telegram Controller Started")
     print("=" * 50)
+
+    # Start notification server in background thread
+    notification_thread = threading.Thread(target=notification_server, daemon=True)
+    notification_thread.start()
 
     # Load schedules from file
     load_schedule()
