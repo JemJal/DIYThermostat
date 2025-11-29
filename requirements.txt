@@ -4,8 +4,8 @@
 # Serial Communication
 pyserial==3.5
 
-# Telegram Bot
-python-telegram-bot==20.7
+# Telegram Bot (v21.9+ required for Python 3.13 support)
+python-telegram-bot==21.9
 
 # Environment Variables
 python-dotenv==1.0.0
