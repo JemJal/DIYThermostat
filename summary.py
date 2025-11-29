@@ -25,7 +25,6 @@ from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
 import logging
 import sys
-import json
 from apscheduler.schedulers.background import BackgroundScheduler
 
 # Load environment variables
@@ -374,7 +373,11 @@ def handle_client(client_socket, address):
         
         elif request == "DAILY_SUMMARY":
             logger.info("Adding daily summary...")
-            response = add_daily_summary()
+            success = add_daily_summary()
+            if success:
+                response = {"status": "success", "message": "Daily summary saved"}
+            else:
+                response = {"status": "error", "message": "Failed to save daily summary"}
         
         elif request == "HISTORICAL":
             logger.info("Retrieving historical summaries...")

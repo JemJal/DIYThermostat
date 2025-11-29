@@ -29,6 +29,7 @@ import os
 import socket
 import threading
 import requests
+import sys
 from datetime import datetime
 from dotenv import load_dotenv
 from telegram import Update
@@ -50,7 +51,6 @@ NOTIFICATION_PORT = 5001  # Socket port to receive notification requests from sm
 if not all([TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, schedule_file, log_file]):
     print("ERROR: Missing required configuration in .env file")
     print("Required: TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, SCHEDULE_FILE, LOG_FILE")
-    import sys
     sys.exit(1)
 
 # Global schedule storage
